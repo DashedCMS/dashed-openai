@@ -30,6 +30,7 @@ class OpenAiProvider extends AiProvider
             AiCapability::Json,
             AiCapability::Vision,
             AiCapability::Image,
+            AiCapability::Embedding,
         ];
     }
 
@@ -120,6 +121,25 @@ class OpenAiProvider extends AiProvider
         }
 
         return null;
+    }
+
+    public function embed(string $text, array $options = []): array
+    {
+        $apiKey = $this->apiKey();
+        if (! $apiKey) {
+            return [];
+        }
+
+        $response = Http::withToken($apiKey)
+            ->acceptJson()
+            ->post('https://api.openai.com/v1/embeddings', [
+                'model' => $options['model'] ?? 'text-embedding-3-small',
+                'input' => $text,
+            ])
+            ->throw()
+            ->json();
+
+        return $response['data'][0]['embedding'] ?? [];
     }
 
     public function settingsSchema(): array
