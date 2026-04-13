@@ -1,8 +1,8 @@
 <?php
 
-use Dashed\DashedOpenai\OpenAiProvider;
-use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
+use Illuminate\Support\Facades\Http;
+use Dashed\DashedOpenai\OpenAiProvider;
 
 uses(TestCase::class);
 
@@ -17,8 +17,7 @@ it('returns an embedding vector for given text', function () {
 
     // OpenAiProvider reads its key from Customsetting; use an anonymous
     // subclass to stub the api key without touching the DB.
-    $provider = new class extends OpenAiProvider
-    {
+    $provider = new class () extends OpenAiProvider {
         protected function apiKey(): ?string
         {
             return 'sk-test';
