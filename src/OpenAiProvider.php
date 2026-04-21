@@ -2,14 +2,14 @@
 
 namespace Dashed\DashedOpenai;
 
-use Exception;
-use Illuminate\Support\Str;
 use Dashed\DashedAi\AiProvider;
-use Illuminate\Support\Facades\Http;
 use Dashed\DashedAi\Enums\AiCapability;
-use Filament\Forms\Components\TextInput;
-use Dashed\DashedCore\Models\Customsetting;
 use Dashed\DashedAi\Exceptions\AiRateLimitException;
+use Dashed\DashedCore\Models\Customsetting;
+use Exception;
+use Filament\Forms\Components\TextInput;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 
 class OpenAiProvider extends AiProvider
 {
@@ -72,8 +72,17 @@ class OpenAiProvider extends AiProvider
 
     public function json(string $prompt, array $options = []): ?array
     {
+        // Prepend a concise raw-JSON instruction to the user's system options.
+        $existingSystem = $options['system'] ?? '';
+        $jsonEnforcer = 'Retourneer uitsluitend geldige JSON. Geen markdown, geen code fences (```), geen uitleg voor of na de JSON. Begin direct met { of [.';
+        $options['system'] = trim($existingSystem."\n\n".$jsonEnforcer);
+
         $messages = $this->buildMessages($prompt, $options);
-        $response = $this->chatRequest($messages, $options['max_tokens'] ?? 10000);
+        $response = $this->chatRequest(
+            $messages,
+            $options['max_tokens'] ?? 10000,
+            ['response_format' => ['type' => 'json_object']]
+        );
 
         return $this->parseJsonResponse($response);
     }
@@ -172,7 +181,7 @@ class OpenAiProvider extends AiProvider
         return $messages;
     }
 
-    protected function chatRequest(array $messages, int $maxTokens = 10000): ?string
+    protected function chatRequest(array $messages, int $maxTokens = 10000, array $extraPayload = []): ?string
     {
         $apiKey = $this->apiKey();
         if (! $apiKey || ! $this->isConnected()) {
@@ -180,13 +189,15 @@ class OpenAiProvider extends AiProvider
         }
 
         try {
+            $payload = array_merge([
+                'model' => 'gpt-4o',
+                'messages' => $messages,
+                'max_tokens' => $maxTokens,
+            ], $extraPayload);
+
             $response = Http::withToken($apiKey)
                 ->timeout(120)
-                ->post('https://api.openai.com/v1/chat/completions', [
-                    'model' => 'gpt-4o',
-                    'messages' => $messages,
-                    'max_tokens' => $maxTokens,
-                ]);
+                ->post('https://api.openai.com/v1/chat/completions', $payload);
         } catch (Exception) {
             return null;
         }

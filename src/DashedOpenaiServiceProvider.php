@@ -17,6 +17,6 @@ class DashedOpenaiServiceProvider extends PackageServiceProvider
 
     public function bootingPackage(): void
     {
-        app(AiManager::class)->register(new OpenAiProvider());
+        app(AiManager::class)->register(new OpenAiProvider);
     }
 }
