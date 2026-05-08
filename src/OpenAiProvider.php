@@ -2,14 +2,14 @@
 
 namespace Dashed\DashedOpenai;
 
-use Dashed\DashedAi\AiProvider;
-use Dashed\DashedAi\Enums\AiCapability;
-use Dashed\DashedAi\Exceptions\AiRateLimitException;
-use Dashed\DashedCore\Models\Customsetting;
 use Exception;
-use Filament\Forms\Components\TextInput;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
+use Dashed\DashedAi\AiProvider;
+use Illuminate\Support\Facades\Http;
+use Dashed\DashedAi\Enums\AiCapability;
+use Filament\Forms\Components\TextInput;
+use Dashed\DashedCore\Models\Customsetting;
+use Dashed\DashedAi\Exceptions\AiRateLimitException;
 
 class OpenAiProvider extends AiProvider
 {
