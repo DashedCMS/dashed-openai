@@ -155,11 +155,11 @@ class OpenAiProvider extends AiProvider
     {
         return [
             TextInput::make('open_ai_api_key')
-                ->label('OpenAI API sleutel')
+                ->label(__('OpenAI API sleutel'))
                 ->password()
                 ->revealable()
-                ->placeholder('sk-...')
-                ->helperText('Je vindt je API sleutel op platform.openai.com → API Keys.'),
+                ->placeholder(__('sk-...'))
+                ->helperText(__('Je vindt je API sleutel op platform.openai.com → API Keys.')),
         ];
     }
 
