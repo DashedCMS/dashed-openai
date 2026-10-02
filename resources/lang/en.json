@@ -1,1 +1,5 @@
-{}
+{
+    "Je vindt je API sleutel op platform.openai.com → API Keys.": "You can find your API key at platform.openai.com → API Keys.",
+    "OpenAI API sleutel": "OpenAI API key",
+    "sk-...": "sk-..."
+}
