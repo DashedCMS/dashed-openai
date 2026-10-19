@@ -6,6 +6,7 @@ use Exception;
 use Illuminate\Support\Str;
 use Dashed\DashedAi\AiProvider;
 use Illuminate\Support\Facades\Http;
+use Dashed\DashedAi\Logging\AiLogger;
 use Dashed\DashedAi\Enums\AiCapability;
 use Filament\Forms\Components\TextInput;
 use Dashed\DashedCore\Models\Customsetting;
@@ -61,7 +62,7 @@ class OpenAiProvider extends AiProvider
     public function text(string $prompt, array $options = []): ?string
     {
         $messages = $this->buildMessages($prompt, $options);
-        $response = $this->chatRequest($messages, $options['max_tokens'] ?? 10000);
+        $response = $this->chatRequest($messages, $options['max_tokens'] ?? 10000, [], 'text', $options);
 
         if ($response === null) {
             return null;
@@ -81,7 +82,9 @@ class OpenAiProvider extends AiProvider
         $response = $this->chatRequest(
             $messages,
             $options['max_tokens'] ?? 10000,
-            ['response_format' => ['type' => 'json_object']]
+            ['response_format' => ['type' => 'json_object']],
+            'json',
+            $options,
         );
 
         return $this->parseJsonResponse($response);
@@ -102,7 +105,7 @@ class OpenAiProvider extends AiProvider
             ],
         ];
 
-        return $this->chatRequest($messages, $options['max_tokens'] ?? 200);
+        return $this->chatRequest($messages, $options['max_tokens'] ?? 200, [], 'vision', $options);
     }
 
     public function image(string $prompt, array $options = []): ?string
@@ -112,22 +115,32 @@ class OpenAiProvider extends AiProvider
             return null;
         }
 
+        $payload = [
+            'model' => $options['model'] ?? 'dall-e-3',
+            'prompt' => $prompt,
+            'n' => 1,
+            'size' => $options['size'] ?? '1024x1024',
+        ];
+        $log = AiLogger::begin('openai', 'image', ['model' => $payload['model'], 'prompt' => $prompt, 'options' => $options + ['size' => $payload['size']]])
+            ->units(1, 'image');
+
         try {
             $response = Http::withToken($apiKey)
                 ->timeout(120)
-                ->post('https://api.openai.com/v1/images/generations', [
-                    'model' => $options['model'] ?? 'dall-e-3',
-                    'prompt' => $prompt,
-                    'n' => 1,
-                    'size' => $options['size'] ?? '1024x1024',
-                ]);
-        } catch (Exception) {
+                ->post('https://api.openai.com/v1/images/generations', $payload);
+        } catch (Exception $e) {
+            $log->fail($e);
+
             return null;
         }
 
         if ($response->successful()) {
+            $log->response($response->json('data.0.url'))->succeed();
+
             return $response->json('data.0.url');
         }
+
+        $log->fail('HTTP ' . $response->status() . ' ' . ($response->json('error.message') ?? ''));
 
         return null;
     }
@@ -139,16 +152,31 @@ class OpenAiProvider extends AiProvider
             return [];
         }
 
-        $response = Http::withToken($apiKey)
-            ->acceptJson()
-            ->post('https://api.openai.com/v1/embeddings', [
-                'model' => $options['model'] ?? 'text-embedding-3-small',
-                'input' => $text,
-            ])
-            ->throw()
-            ->json();
+        $model = $options['model'] ?? 'text-embedding-3-small';
+        $log = AiLogger::begin('openai', 'embedding', ['model' => $model, 'prompt' => $text, 'options' => $options]);
 
-        return $response['data'][0]['embedding'] ?? [];
+        try {
+            $response = Http::withToken($apiKey)
+                ->acceptJson()
+                ->post('https://api.openai.com/v1/embeddings', [
+                    'model' => $model,
+                    'input' => $text,
+                ])
+                ->throw()
+                ->json();
+        } catch (\Throwable $e) {
+            $log->fail($e);
+
+            throw $e;
+        }
+
+        $embedding = $response['data'][0]['embedding'] ?? [];
+        $log->model($response['model'] ?? null)
+            ->usage($response['usage'] ?? null)
+            ->response('[embedding, ' . count($embedding) . ' dimensies]')
+            ->succeed();
+
+        return $embedding;
     }
 
     public function settingsSchema(): array
@@ -181,30 +209,41 @@ class OpenAiProvider extends AiProvider
         return $messages;
     }
 
-    protected function chatRequest(array $messages, int $maxTokens = 10000, array $extraPayload = []): ?string
+    protected function chatRequest(array $messages, int $maxTokens = 10000, array $extraPayload = [], string $kind = 'text', array $options = []): ?string
     {
         $apiKey = $this->apiKey();
         if (! $apiKey || ! $this->isConnected()) {
             return null;
         }
 
-        try {
-            $payload = array_merge([
-                'model' => 'gpt-4o',
-                'messages' => $messages,
-                'max_tokens' => $maxTokens,
-            ], $extraPayload);
+        $payload = array_merge([
+            'model' => $options['model'] ?? 'gpt-4o',
+            'messages' => $messages,
+            'max_tokens' => $maxTokens,
+        ], $extraPayload);
 
+        $log = AiLogger::begin('openai', $kind, ['model' => $payload['model'], 'prompt' => $messages, 'options' => $options + ['max_tokens' => $maxTokens]]);
+
+        try {
             $response = Http::withToken($apiKey)
                 ->timeout(120)
                 ->post('https://api.openai.com/v1/chat/completions', $payload);
-        } catch (Exception) {
+        } catch (Exception $e) {
+            $log->fail($e);
+
             return null;
         }
 
         if ($response->successful()) {
+            $log->model($response->json('model'))
+                ->usage($response->json('usage'))
+                ->response($response->json('choices.0.message.content'))
+                ->succeed();
+
             return $response->json('choices.0.message.content');
         }
+
+        $log->fail('HTTP ' . $response->status() . ' ' . ($response->json('error.message') ?? ''));
 
         if ($response->status() === 429) {
             throw new AiRateLimitException('OpenAI rate limit exceeded');
